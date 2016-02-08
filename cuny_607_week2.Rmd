@@ -1,0 +1,71 @@
+---
+title: "cuny_607_week2"
+author: "Valerie Briot"
+date: "February 7, 2016"
+output: pdf_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+This week assignment is to illustrate data manipulation.
+
+1. retrieve a data set from UCI Machine Learning repository, Data Set = Flags
+
+
+```{r}
+flags <- read.csv("http://archive.ics.uci.edu/ml/machine-learning-databases/flags/flag.data", header = FALSE)
+```
+
+2. Add Column Names
+The data set has no header, hence we will append column headers, column headers will be assigned based on the metadata information in https://archive.ics.uci.edu/ml/machine-learning-databases/flags/flag.names.txt
+
+
+```{r}
+names(flags) <- c("name", "landmass", "zone", "area", "population", "language", "religion", "bars", "stripes", "colours",
+                   "red", "green", "blue", "gold", "black", "white", "orange", "mainhue", "circles", "crosses", "saltires", 
+                  "quarter", "sunstars", "crescent", "triangle", "icon", "animate", "text", "topleft", "botright")
+
+```
+
+3. Subset Rows and Columns
+
+we will now show the first few rows of the data set
+```{r}
+head(flags) 
+```
+
+we will only consider rows where landmass = N. America (1) or Europe (3)
+
+```{r}
+myflags <- subset(flags, landmass == "1" | landmass == "3")
+
+```
+
+We will only consider the columns name, landmass, and bars through text.  
+
+```{r}
+myflags_1 <- subset(myflags, select = name:landmass)
+myflags_2 <- subset(myflags, select = bars:text)
+myflags_new <- cbind(myflags_1, myflags_2)
+```
+
+
+4. Map value of landmass as follows 1 : N_America and 3 : Europe
+
+```{r}
+require(plyr)
+
+myflags_new$landmass <- mapvalues(myflags_new$landmass, 
+                               from=c("1","3"), 
+                               to=c("N_America","Europe"))
+```
+
+5. Display transformed data set
+
+```{r}
+myflags_new
+```
+
+
