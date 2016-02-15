@@ -1,0 +1,141 @@
+---
+title: "cuny_607_week3"
+author: "Valerie Briot"
+date: "February 14, 2016"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+#CUNY 607 - Data Acquisition and Management
+
+
+This week assignment is to explore how data can be combined from different sources.  We will explore 2 data sources.  One already residing in database (mySQL) and the other is a .csv file (population.csv)
+
+<span style="color:red">The Metada below is based on analysis of tb.csv table and basic assumptions on how this data was derived.</span>
+
+##Turbeculosis cases worldwide years 1995 - 2013 (tb entity):
+tb is the file that resides in mySQL.  It is an aggregated file. Each record represents various new and relapse cases of turbeculosis per coutry per year, per gender. The data is separated based on age category: child, adult, elderly. Hence, 2 rows of the data represent the total new cases, for a country, for a year; one row per gender.
+
+####Metadata for tb:  
+
+**country;**  country for which the new and relapse cases of turbeculosis have been recorded.    
+              Assumption is that country name is by UN convention.
+             
+**year;**     year for which the new and relapse cases of turbeculosis have been recorded.  
+             
+**sex;**      gender, the new cases are segragated by gender, possible value 'female' or 'male'.
+            
+**child;**    count for new and relapse cases of turbeculosis for children of the given gender, 
+              in the given year, in the given country.
+              We will assume that children are age 0 - 14 years of age.  
+              If data is not available, a NULL value will be in the attribute.
+             
+**adult;**    count for new and relapse cases of turbeculosis for adult of the given gender, in the given year,  
+              in the given country.  
+              We will assume that adult are age 15 - 64 years of age.  
+              If data is not available, a NULL value will be in the attribute.
+             
+**elderly;**  count for new and relapse cases of turbeculosis for children of the given gender, in the given year,
+              in the given country.
+              We will assume that elderly are age 65 and older.
+              If data is not available, a NULL value will be in the attribute.
+         
+##World population for years 1995 - 2013 (population.csv)
+
+The other file population.csv represents the total population per country per year.  Each record represent the population count for a given country for a given year.
+
+####Metadata for population.csv:
+**country;**  country for which the population count is recorded. 
+              Assumption is that country name is by UN convention. 
+         
+**year;**     year for which the population count is recorded.
+
+**population;** Actual population count for the country for the year.
+
+##Analysis of data in tb and population file:
+
+1. Load population.csv from loca to mySQL 
+   population.csv was loaded in mysql using the sql script: population.sql
+   https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/population.sql
+
+2. Compare structure of tb and population
+   From within mySQL, some analysis was done to confirm that every country/year in tb was found in population (and vice versa).
+   We also verify that every year in tb were within 1995-2013 range.  Finally, we confirmed that gender was always 
+   'female' or 'male', that they were no unknown. This analysis was done running queries in mySQL.
+   We then merge (join) the files matching by country and year and set NULL = -999.
+   We decided to keep the data segragated by gender as to be able to pursue an line of inquiry by gender.
+   
+   The various sql statements can be found in the sql script: cuny_607_week3_analysis.sql
+   https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/cuny_607_week3_analysis.sql
+   
+3.  New data set = tb_population.csv
+    the new data set which is the result of the join of the 2 tables (tb and population) has been named tb_population.csv  
+    and can be found on github at:
+    https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/tb_population.csv
+    
+    tb_population.csv has the following attribute: country, year, sex, child, adult, elderly, population as defined above.  
+    The NULL values have been replaced by -999 and will be handled in subsequent transformation in R.
+
+##Transformation of data in tb_population.csv
+
+data in tb_population will be modified to be aggregated accross the columns child, adult, elderly and also accross rows  
+for same country, year.  The granularity of the data was kept to allow statistical analysis along gender lines and age group lines.
+
+1. Invoke appropriate packages.
+
+```{r}
+library(RCurl)
+library(plyr)
+```
+
+2. Load tb_population data into data frame
+
+```{r}
+# data frame df_tb_raw
+x <- getURL("https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/tb_population.csv")
+df_tb_raw <- read.csv(text = x, header = FALSE, sep = ";")
+
+head(df_tb_raw)
+
+# add column name to data frame, we will use gender instead of "sex"
+names(df_tb_raw) <- c("country", "year", "gender", "child", "adult", "elderly", "population")
+```
+
+3. Replace unknown data, currently -999 with NA
+```{r}
+df_tb_raw$child[df_tb_raw$child==-999] <- NA
+df_tb_raw$adult[df_tb_raw$adult==-999] <- NA
+df_tb_raw$elderly[df_tb_raw$elderly==-999] <- NA
+
+```
+
+4. For each row, compute total count by country, year, gender
+```{r}
+df2 <- mutate(df_tb_raw, total = child + adult + elderly)
+```
+
+5. For each country, year combination, we will aggregate total accross gender
+```{r}
+df3 <- ddply(df2, c("country", "year"), summarize, total_count = sum(as.numeric(total), na.rm = FALSE), population_count = sum(as.numeric(population))/2)
+```
+
+6. For each aggregated row, we will calculate rate as defined by total_count/total_population and  
+   rate per 100,000 as defined by total_count/total_population * 100,000, results will be stored in tb_rate
+```{r}
+tb_rate <- mutate(df3, rate = total_count/population_count, rate_100 = round(total_count/population_count*100000), 2)
+head(tb_rate)
+```
+
+##Avenues of analysis
+
+We will explore the following:
+Is there a gender or age factor in new instance of TB 
+Is the overall infection rate decreasing in the last 10 years or so?
+Where are the regions with high incidence rate (as defined as 40 per 100,000 or higher)?
+Where are the regions with low incidence rate (as defined as 40 per 100,000 or lower)?
+
+##Visualization of Analysis
+
+Using statistical graph (ggplot) and geo represenation (rworldmap) a visual represenation of analysis will be provided.
