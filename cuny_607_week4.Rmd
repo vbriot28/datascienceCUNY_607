@@ -1,0 +1,148 @@
+---
+title: "CUNY 607_Week#4"
+author: "Valerie Briot"
+date: "February 21, 2016"
+output: html_document
+---
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+The following document is solution to exercises from Text: Automated Data Collection with 'R'.
+Exercise 3 page 217:
+In this exercise we are using string manipulation techniques to reformat names and create logical vector to carry some information about content of name strings.
+
+```{r}
+
+# Invoque String Package
+library(stringr)
+
+# Set Name vector
+
+raw.data <- "555-1239Moe Szyslak(636) 555-0113Burns, C. Montgomery555-6542Rev. Timothy Lovejoy555 8904Ned Flanders636-555-3226Simpson, Homer5543642Dr. Julius Hibbert"
+
+# Extract name from raw.data
+
+name <- unlist(str_extract_all(raw.data, "[[:alpha:]., ]{2,}"))
+
+# Dispay name
+
+name
+```
+
+a. Reformatting name to display first_name Last_name format
+
+```{r, eval = FALSE}
+## Unfortunately, I am sill trying to get the function to work properly in all cases...
+
+
+
+## Assume that name will contain at least first and last name
+
+format_name <- function(raw_string){
+  
+  # reset name variables
+  first_name <- " "
+  last_name <- " " 
+  title_name <- " "
+  middle_name <- " "
+  
+  name_str <- unlist(str_split(raw_string, "[[:blank:]]"))
+  
+  for (i in 1:length(name_str) ) {
+    name_tst <- name_str[i]
+  
+    name_tst <- str_trim(name_tst)
+    name_alpha <- str_extract(name_tst, "[[:alpha:]]+")
+     
+    # check for ending ',' or '.'  
+    if (str_detect(name_tst, ",")){
+        last_name <-name_alpha
+      }
+    }else if(str_detect(name_tst, "\\.")){
+      if (i == 1) { 
+        title_name <- name_tst
+      }else (i<length(name_tst)){
+        middle_name <-name_tst
+      }
+    }else{ # no punctuation character detected
+      if ( i== 1){
+        first_name <- name_alpha
+      }else if (i<length(name_tst)){
+        middle_name <- name_alpha
+      }else{
+        last_name <- name_alpha
+      }
+    } # end of else
+  } # end of for loop
+  
+  out_string <- str_c(first_name, last_name, sep = " ")
+  return(out_string)
+}
+
+format_name(name[1])
+format_name(name[2])
+format_name(name[3])
+format_name(name[4])
+format_name(name[5])
+format_name(name[6])
+
+```
+
+b. Construct a logical vector indicating whether a character has a title
+
+```{r}
+v_rev <- str_detect(name, "Rev.")
+v_dr <- str_detect(name, "Dr.")
+v_title <- v_rev | v_dr
+# display logical vector
+v_title
+```
+
+c. Construct a logical vector indicating whether a character has a middle name
+
+```{r}
+v_middle <- str_detect(name, "[[:upper:]]\\.")
+# Display logical vector
+v_middle
+
+```
+
+***Exercise # 7 page 218***
+
+Consider the string <title>+++BREAKING NEWS+++</title>, we would like to extract first HTML tag, we write expression: <.+>
+Explain why it is not working and fix it.
+First let us see what we get:
+
+```{r}
+test_str <- "<title>+++BREAKING NEWS+++</title>"
+
+str_extract(test_str, "<.+>")
+```
+When we execute this command, we get the all string.  This is due to R applying "greedy quantification".  That is R will extract the greatest possible sequence of any characters before "<....>" to modify this behavior we have to use the ? to indicate that we only want shortest possible expression.  Hence by modifying the sequence by adding ?
+
+```{r}
+test_str <- "<title>+++BREAKING NEWS+++</title>"
+
+str_extract(test_str, "<.+?>")
+```
+
+***Exercise # 8 page 218***
+Consider the string: (5-3)^2=5^2-2*5*3+3^2, we would like to extract the formula to the string by writing following regular expression "[^0-9=+*()]+".
+This does not lead to the desire result.  Explain why and fix it.
+Again, we will try this expression and consider the results:
+
+```{r}
+test_str2 <- "(5-3)^2=5^2-2*5*3+3^2"
+
+str_extract(test_str2, "[^0-9=+*()]+")
+```
+
+The result is '-'.  This is due to the Metacharacters and their meaning... ^ indicates "not in" and the - is interpreted as a range between digit.  Most Metacharacter are interpreted literally when included within bracket in expression.  However, this is not the case for ^ at beginning of expression and - between digits.  Hence we need to make the following modifications to the expression... Move the ^ within expression not at beginning and add - in expression to account for - sign in expression, we still want to interpret 0-9 as range of digits.
+
+```{r}
+str_extract(test_str2, "[0-9=+*^()-]+")
+```
+
+***Exercise # 9 page 218***
+
+I have not craked the code.  I am still trying to figure it out...
