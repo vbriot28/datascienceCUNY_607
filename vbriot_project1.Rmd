@@ -1,0 +1,173 @@
+---
+title: "vbriot_CUNY607_project1"
+author: "Valerie Briot"
+date: "February 28, 2016"
+output: 
+html_document:
+    css: ./project.css
+    highlight: pygments
+    theme: cerulean
+---
+
+In this project, we will read a .txt file that contains the chess results for a given tournament.  This information will be read, 
+formatted and a .csv file will be produced from it.  The format of the .csv file will be as follows:
+Player's Name, Player's State, Total Number of Points, Player's Pre-Rating, and Average Pre Chess Rating of Opponents
+
+For the scrapping of the data from the .txt file and some formatting we will use the stringr package.  Also, we will expect that
+the .txt file that we will read is available in the working directory (tournamentinfo.txt)
+```{r, eval = TRUE}
+library(stringr)
+library(plyr)
+```
+
+### Reading information from tournamentinfo.txt into r
+
+Although the data in tournamentinfo.txt has some structure, each row do not have the same format.  Because of this we will use 
+readlines command instead of read.table
+
+```{r, eval=TRUE}
+
+t <- readLines(con="tournamentinfo.txt", n = 196, ok = TRUE, warn = TRUE,
+          encoding = "unknown", skipNul = FALSE)
+```
+We will look at the first 15 raws of the data.
+```{r, eval=TRUE}
+
+t[1:15]
+length(t)
+```
+
+From the results, it is clear that starting from line 5, there is a pattern of 2 lines containing 
+data and 1 line acting as a separator.  We will contruct a vector of lines that we will want to skip
+Mainly, line 1-4 (header) and every 3 line starting on line 7 until line 196 (last line in structure).
+We will then strip these lines from our structure t, and create a new working structure t2.
+
+```{r, eval = TRUE}
+skip_lines <- c(1, 2, 3, 4, seq(from = 7, to = 196, by=3))
+
+t2 <- t[-skip_lines]
+
+t2[1:15]
+
+```
+
+###Analysis of the data structure
+From this structure, it is clear that we have 2 formats, one for odd lines and one for even lines.
+In both case the "|" is acting a separator.  Hence for each line type, we will first split the data
+into smaller groups using "|" as the separator.  This will give us 2 distinct groups of strings.
+
+We will continue the analysis for each type.
+
+***Odd Line Format***
+First string is the player pair number in tournament, 
+2nd string contains the name of player, 
+3rd string is the total score of player, 
+and the next 7 represent the results for player in matches he played.
+each of this represents results and the pair number of opponent.
+
+If the player does not meet an opponent for a given round, extraction process
+will assign NA for that round.
+
+***Even Line Format***
+First string is the state of the player, 
+2nd string contains 3 piece of information; UScF ID of player and player pre-tournament rating (following R:)
+We are not concerns at this time with the remaining information.
+
+we will write a function to perform the extraction and return the result into a data frame.
+
+```{r, eval = TRUE}
+odd_line_f <- function(line_string){
+  # function to format odd lines from tournament table
+  # split string into individual group of fields based on '|' as separator
+  odd_line <- unlist(str_split(line_string, "\\|"))
+  
+  # 1st position represents player pair number, we recast string as integer
+  player_pair_num <-as.integer(str_trim(odd_line[1]))
+  
+  # 2nd position represents player name, we are stripping extra blank
+  player_name <- str_trim(odd_line[2])
+  
+  # 3rd position represent player total points, we recast string as numerical
+  player_total_pts <- as.numeric(str_trim(odd_line[3]))
+  
+  # Next 7 positions represents player opponents and results
+  # We first extract alpha charater and stored in results
+  player_results <- unlist(str_extract(odd_line, "[[:alpha:]]"))[c(4, 5, 6, 7, 8, 9, 10)]
+  
+  # Next we extract digits and store in player_opponents
+  player_opponents <- as.integer(str_extract(odd_line, "\\d{1,2}")[c(4, 5, 6, 7, 8, 9, 10)])
+  
+  df_out <- data.frame(player_pair_num, player_name, player_total_pts, player_opponents, player_results)
+  
+  return(df_out)
+}
+
+even_line_f <- function(line_string){
+  # Function to format even lines from tournament table
+  # split string into individual group of fields based on '|' as separator
+  even_line <- unlist(str_split(line_string, "\\|"))
+
+  # extract player's state and store
+  player_state <- str_trim((even_line[1]))
+  
+  # split up 2nd field into individuals using :blank: as separator, limit to 6 groups to trim extra space 
+  player_numbers_raw <- unlist(str_split(even_line[2], "[[:blank:]]", 6))
+  # Only consider grouping with digits
+  player_numbers <- grep("[[:digit:]]", player_numbers_raw, value = TRUE)
+  
+  # Extract 2nd position as player's USCF ID 
+  player_USCF_id <- str_trim(player_numbers[1])
+  
+  # Extract 5th position as player pre-tournament score
+  player_pre_score <- str_extract(player_numbers[2], "\\d*")
+  
+  df_out <- data.frame(player_state, player_USCF_id, player_pre_score)
+  
+  return(df_out)
+}
+```
+
+###Processing of the data structure
+For each pair of rows in the data structure t2, we will process the first one using function: odd_line_f and 
+the second row using even_line_f.  The output dataframe for each will be binded together and then appended to our final 
+data frame.  This processing will be done with in a for loop.
+
+```{r, eval = TRUE}
+
+for (i in 1:length(t2)){
+  if(i %% 2 == 1){
+    df_odd <- odd_line_f(t2[i])
+  }else{
+    df_even <- even_line_f(t2[i])
+    df_row <- cbind(df_odd, df_even)
+    
+    if(i == 2){
+      df_final <- df_row
+    }else{
+      df_final <- rbind(df_final, df_row)
+    }
+  }
+}
+
+```
+
+###Computation of average of pre-tournament rating of opponents
+We first extract the list of players and their pre-tournament score.  We also only consider the unique rows.  
+Then, we merge this dataframe with original, matching on the player opponents.  This will bring the pre-score 
+for each opponent.  Finally, we will average this value accross all rows for each player.
+
+```{r, eval = TRUE}
+
+df_players_list <- df_final[, c(1, 8)]
+df_players_list <- unique(df_players_list)
+
+df_final_all <- merge(df_final, df_players_list, by.x="player_opponents", by.y="player_pair_num")
+df_final_all_sorted <-df_final_all[order(df_final_all$player_pair_num), ]
+
+df_final_all_sorted
+
+df_final_average <- ddply(df_final_all_sorted, c("player_pair_num"),summarise, player_average_rating = mean(as.numeric(player_pre_score.y), na.rm=TRUE))
+
+df_final_average
+
+```
