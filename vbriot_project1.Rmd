@@ -18,6 +18,7 @@ the .txt file that we will read is available in the working directory (tournamen
 ```{r, eval = TRUE}
 library(stringr)
 library(plyr)
+library(sqldf)
 ```
 
 ### Reading information from tournamentinfo.txt into r
@@ -154,20 +155,51 @@ for (i in 1:length(t2)){
 ###Computation of average of pre-tournament rating of opponents
 We first extract the list of players and their pre-tournament score.  We also only consider the unique rows.  
 Then, we merge this dataframe with original, matching on the player opponents.  This will bring the pre-score 
-for each opponent.  Finally, we will average this value accross all rows for each player.
+for each opponent.  
+
+We sort the resulting data frame by player_pair_num.
+
+The merge function cast the scores as factor.  To perform any aggregate function on these, we have to type cast
+them as numeric using ***as.numeric(as.character(df$factor_fiel)), as.numeric directly on factor does not work.***
+
+Finally, we will average this value accross all rows for each player.
 
 ```{r, eval = TRUE}
-
+# Extract player_pair_num and player pre-tournament score in different data frame
 df_players_list <- df_final[, c(1, 8)]
 df_players_list <- unique(df_players_list)
 
+# match the opponent number with new list of player/pre-tournament score to populate opponent pre-tournament score
 df_final_all <- merge(df_final, df_players_list, by.x="player_opponents", by.y="player_pair_num")
+
+# sort the resulting data frame in order of player_pair_num
 df_final_all_sorted <-df_final_all[order(df_final_all$player_pair_num), ]
 
-df_final_all_sorted
+# display structure of resulting sorted data frame
+str(df_final_all_sorted)
 
-df_final_average <- ddply(df_final_all_sorted, c("player_pair_num"),summarise, player_average_rating = mean(as.numeric(player_pre_score.y), na.rm=TRUE))
+# recast pre-tournament score for player and opponent from factor to numeric (must do character first)
+# rename new field for better clarity
+df_final_all_sorted$player_pre_score = as.numeric(as.character(df_final_all_sorted$player_pre_score.x))
+df_final_all_sorted$opponent_pre_score = as.numeric(as.character(df_final_all_sorted$player_pre_score.y))
 
-df_final_average
+# display data frame structure data frame
+str(df_final_all_sorted)
+
+# using ddply calculate average pre-tournament score of opponents 
+df_final_average <- ddply(df_final_all_sorted, c("player_pair_num", "player_name", "player_state", "player_total_pts", "player_pre_score"),summarise, player_average_rating = round(mean(opponent_pre_score, na.rm=TRUE),0))
+
+# display resulting data frame
+str(df_final_average)
+
+# display the first 20 rows of resulting data frame
+df_final_average[1:20, ]
 
 ```
+
+Finally we will create a .csv file from the final resulting data frame.
+
+```{r, eval = TRUE}
+write.csv(df_final_average, file = "chess_tournament.csv")
+```
+
