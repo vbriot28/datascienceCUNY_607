@@ -1,0 +1,148 @@
+---
+title: "CUNY 607 - Week 6 Assignment"
+author: "Valerie Briot"
+date: "March 5, 2016"
+output: html_document
+
+---
+
+In this assignment, we will import a .csv table that contains untidy data and transform the table to confirm to tidy concepts.  We will then answer some statistical questions regarding the variables in the table to compare the arrival delays for the two airlines.
+
+The following packages are used in the assignment and we are assuming that they are available;  
+RCurl,  
+zoo,  
+tidyr,   
+dplyr,  
+ggplot2    
+```{r, eval = TRUE, echo = FALSE}
+library(RCurl)
+library(zoo)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+For reproducible results, the .csv file (CUNY 607 - Tidy Data Assignment.csv) has been loaded on Github.  We will download from GitHub to start the assignment.  The file can be found at the following link:  
+[https://github.com/vbriot28/datascienceCUNY_607/blob/master/CUNY%20607%20-%20Tidy%20Data%20Assignment.csv]
+
+***
+
+### Download CUNY 607 - Tidy Data Assignment.csv file
+First we will download the file and store it into temp_table.  Prior to transforming the table we will view it.
+
+```{r, eval = TRUE}
+file_url <- getURL("https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/CUNY%20607%20-%20Tidy%20Data%20Assignment.csv")
+temp_table <- read.csv(text = file_url)
+
+# View file using "tbl_df" command from dplyr package
+tbl_df(temp_table)
+```
+From this observation, we determine that we will need to modify the content/structure of table as follows:  
+1. We would need to introduce a name for column 1; Airlines  
+   *Since there was no header for this column in the original .csv file, system defaulted name to X, we will rename this column*     
+     
+2. We would need to introduce a name for column 2; Timetype    
+   *Again, there was no header for this column in the original .csv file, the system defaulted to X.1, we will rename this column*    
+     
+3. Column 4 and 7 have been interpreted as factor, we need to convert them to numeric    
+   *Since some entries had ',' due to being beyond a thousand, the system interpreted the column as factors, we need to convert them back to numeric, double*      
+4. The 3rd line of the table need to be removed    
+   *This line was a separator in the original table and do not contain any meaningful data and should be removed, we will do this by removing any row with NA entries. We are assuming that such rows were delimiters in original table.*   
+   
+5. We need to fill-in the appropriate value for airline in the missing row of the table  
+   *For each airline, the data is information is written over 2 rows, the first one pertain to on-time flights, the second one to delayed flights.  We must extend the airline name from one row to the next one.*  
+     
+```{r, eval = TRUE}
+# Item# 4, remove any rows with NA as an entry, we will store result in a different data frame temp_table2
+temp_table2 <- na.omit(temp_table)
+
+# Item# 5, we need to fill-in column 1 column when "blank" with value from prior row, to do so we will leverage na.locf() from zoo package
+temp_table2[temp_table2 == ""]<-NA
+temp_table2$X <- na.locf(temp_table2$X)
+
+# Item# 1 & 2, rename column 1 & 2 of data frame with "Airlines" and "TimeType"
+names(temp_table2)[1:2] <- c("Airlines", "Timetype")
+
+# Item# 3, column 4 & 7 must be converted from factors to numeric (double), we will first strip the "," and them convert to double to match other columns
+# please note that using gsub convert factor to character so we only then have to convert to numeric.
+temp_table2$Phoenix <- as.double(gsub(",", "", temp_table2$Phoenix))
+temp_table2$Seattle <- as.double(gsub(",", "", temp_table2$Seattle))
+
+# We will re-display the table to confirm all the transformations
+tbl_df(temp_table2)
+
+```
+
+### Transforming Table in "tidy format"
+We will now proceed with "tidying" the table.  In order for a table to be tidy, the following must hold true:  
+1. Each Variable is saved in its own column  
+2. Each observation is save in its own row  
+3. Each type of observation is save in its own table  
+
+Looking at the table, it is apparent that this table is in a "wide format", with cities values being used as columns, we will therefore gather these columns under heading of "cities" and introduce a column "Time".  In order to perform this operation, we will leverage gather() function from tidyr package.  
+We will store the result in a new table; temp_table3.  We will view the resulting table after the transformation.
+
+```{r, eval = TRUE}
+# gather columns 3:7 into single column under heading of "cities" and introduce a column "t_count"
+temp_table3 <-gather(temp_table2, cities, t_count, 3:7)
+
+# we will view the resulting table
+tbl_df(temp_table3)
+```
+
+This table is actually in a tidy format.  However, for the analysis we have in mind, mainly comparing the arrival delayed times for the two airlines, it would be better to have the On-Time time and Delayed time on 2 separate columns.  In order to achieve this result we would need to "spread" the table. This can be acomplished with the spread() function from the tidyr package.  Again we will store the result in a separate table; temp_table4.  We will view the resulting table after the transformations.
+
+```{r, eval = TRUE}
+# spread column Timetype into values On-Time and Delayed using column "t_count" for input into cell
+temp_table4 <- spread(temp_table3, Timetype, t_count)
+
+# we will view the resulting table
+tbl_df(temp_table4)
+
+```
+
+### Statistical Analysis on Delayed Times
+
+First we will generate descriptive statistics for the table using the summary function in base R.
+
+```{r, eval = TRUE}
+summary(temp_table4)
+```
+
+We are interested in the arrival delays for the two airlines.  We would first calculate a ratio for each airline, for each city that would correspond to percentage of delays (delays/total arrival, i.e. delays/(delays+on-time)).  This calculation will be done using the mutate function in dplyr package. We will store the resulting table in temp_table5.  We will review the resulting table after the calculation.  
+
+```{r, eval = TRUE}
+temp_table5 <- mutate(temp_table4, delays_ratio = round(temp_table4$Delayed/(temp_table4$"On-Time"+temp_table4$Delayed), 2))
+
+tbl_df(temp_table5)
+```
+
+We will also calculate the mean of ratio for each airlines:
+
+```{r, eval = TRUE}
+temp_table5 %>% group_by (Airlines) %>% 
+                summarise(mean = mean(delays_ratio))
+```
+
+From this result, we can conclude that AM WEST airline has a higher average percentage of arrivals that are delayed thean ALASKA airline.
+
+We will now graph the ratio of delayed arrivals for each airlines, per city.  We will use colors to differentiate one airline from the other.  The graphs will be done with ggplot2 package.  For graphic function to work correctly, we must convert cities to factor from character.  
+```{r, eval = TRUE}
+
+# Convert cities to factor
+temp_table5$cities <- as.factor(temp_table5$cities)
+
+# ungroup the table
+temp_table5 %>% ungroup()
+
+# Display cleveland plot 
+ggplot(temp_table5, aes(x=delays_ratio, y=reorder(cities, delays_ratio), colour = Airlines)) + geom_point(size=3) + ggtitle("Cleveland Dot Plot for % Delayed Arrivals per Cities") + labs(x="% Delayed Arrivals", y="Arrival Cities")
+
+# Display line plot
+ggplot(temp_table5, aes(x=reorder(cities, delays_ratio), y=delays_ratio, colour = Airlines, group = Airlines)) + geom_line(linetype = "dashed") + geom_point(shape = 22, size = 3, fill = "white") + ggtitle("Line Graph for % Delayed Arrivals per Cities") + labs(x="Arrival Cities", y="% Delayed Arrivals")
+
+```
+
+From both these graphs, % Delayed Arrivals is much greater fro AM WEST airlines for each observations.  We also noticed that busy airports like San Fracisco, Seattle, and Los Angeles experienced more delayed than San Diego and Phoenix.  However, we out additional information it would be difficult to determine why.  We should noticed that for AM WEST, the % delayed arrivals for Los Angeles much less than what might be expected judging by the graphs pattern.  Further investigation would be required.
+
