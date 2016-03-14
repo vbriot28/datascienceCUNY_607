@@ -1,0 +1,266 @@
+---
+title: "CUNY 607 Project2"
+author: "Valerie Briot"
+date: "March 13, 2016"
+output: 
+  html_document:
+    css: ./project.css
+    highlight: pygments
+    theme: cerulean
+---
+## CUNY 607 Data Acquisition and Management - Project# 2  
+
+This assignment is on practicing the techniques of data manipulations to transform data from wide to long format using tidyr and dplyr packages.  To this effect we will work on 3 separate data sets provided by other students in the class.
+
+The following packages are required for the assignment:  
+* RCurl,  
+* lubridate,  
+* tidyr,   
+* dplyr,   
+* ggplot2  
+
+```{r, eval = TRUE, echo = FALSE}
+library(RCurl)
+library(lubridate)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+```
+
+***
+
+### Mobile App's downloads
+
+#### Data Set: Explanation and load  
+
+This data set contains the number of downloads per provider (Apple, Android) for year 2010 to 2015.  The number of download are in millions.  In addition, the coresponding release date for each app provider.  The number of downloads are approximations from overall numbers found on Wikipedia.  The release date is based on information on Wikipedia.
+
+For reproducible research, the data set will be loaded in a GitHub account as a .csv.  The file will be downloaded into tb_tp1.
+Prior to transforming the table we will view it.
+
+```{r, eval = TRUE}
+file1_url <- getURL("https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/CUNY%20607_Project2_dataset1.csv")
+tb_tp1 <- read.csv(text = file1_url)
+
+# View file using "tbl_df" command from dplyr package
+tbl_df(tb_tp1)
+
+# view structure of data set tb_tp1
+str(tb_tp1)
+```
+
+
+#### Formatting of raw data into a long-format table  
+
+After the load, we have a few problems that we have to address. A closer look at the data leads to the following conclusion; 
+This data set is comprise of 3 sections;  
+1. Common fields; app's name, type, paying status  
+2. section for Apple; release date, years 2010 - 2015  
+3. section for Androids; release date, years 2010 - 2015  
+
+For transformation, we will first segregate the data set into 2 tables, one for apple and one for android, will then add a column for provider on each table and fill it with the appropriate value and then combine the 2 tables.  Each of the provider table will contains the common section.
+
+It is also clear that we can remove the first line of the  raw table.  
+
+```{r, eval = TRUE}
+tb_tp1_2 <- tb_tp1[-c(1), ]  # remove row# 1
+
+tbl_df(tb_tp1_2)
+
+# split the table into 2
+tb_tp1_apple <- select(tb_tp1_2, 1:10)
+tb_tp1_android <- select(tb_tp1_2, 1:3, 11:17)
+
+```
+
+From observation of the data, it is clear that the now first row of the data is actually the column header.  We will therefore modify the column header in for each table.  Once this is done, we will remove the first row.  
+Finally, we will fix the missing date entry... We will change it to '07/01/2009' and convert this column to a date field.
+
+```{r, eval = TRUE}
+# names(tb_tp1_apple) <- c(as.character((tb_tp1_apple[1, ]))), this does not do what I would like.  It uses the number of levels for each factor (I think) instead of the actual content
+# however, on Stackoverflow, I found that you can use the lapply function... so I tried...
+
+names(tb_tp1_apple) <- lapply(tb_tp1_apple[1,], as.character)
+names(tb_tp1_android) <- lapply(tb_tp1_android[1,], as.character)
+
+tb_tp1_apple <- tb_tp1_apple[-c(1), ]      # remove row# 1
+tb_tp1_android <- tb_tp1_android[-c(1), ]  # remove row# 1
+
+
+# Droplevels, this will drop unused level (hence the column header values that were originally mistaken for row of data will be dropped as level)
+#tb_tp1_apple <- droplevels(tb_tp1_apple)
+#tb_tp1_android <- droplevels(tb_tb1_android)
+#  Did not seem to have worked, I am not sure why....
+
+# Instead we will use factor()
+tb_tp1_apple$`App Name` <- factor(tb_tp1_apple$`App Name`)
+tb_tp1_apple$Type <- factor(tb_tp1_apple$Type)
+tb_tp1_apple$`Paid/Free` <- factor(tb_tp1_apple$`Paid/Free`)
+tb_tp1_apple$`Release Date` <- factor(tb_tp1_apple$`Release Date`)
+
+tb_tp1_android$`App Name` <- factor(tb_tp1_android$`App Name`)
+tb_tp1_android$Type <- factor(tb_tp1_android$Type)
+tb_tp1_android$`Paid/Free` <- factor(tb_tp1_android$`Paid/Free`)
+tb_tp1_android$`Release Date` <- factor(tb_tp1_android$`Release Date`)
+
+# Finally we replace the incorrect date in "Release date" column and convert "Release Date" column to date
+
+grep("9-Jul", tb_tp1_apple$`Release Date`, value = FALSE)
+tb_tp1_apple$`Release Date` <- gsub("9-Jul","07/01/2009",tb_tp1_apple$`Release Date`)
+grep("9-Jul", tb_tp1_apple$`Release Date`, value = FALSE)
+
+grep("9-Jul", tb_tp1_android$`Release Date`, value = FALSE)
+tb_tp1_android$`Release Date` <- gsub("9-Jul","07/01/2009",tb_tp1_android$`Release Date`)
+grep("9-Jul", tb_tp1_android$`Release Date`, value = FALSE)
+
+# Note, after gsub applied, "Release Date" Column is changed to Character from factor??
+# We will now change it to Date
+tb_tp1_apple$`Release Date` <- mdy(tb_tp1_apple$`Release Date`)
+tb_tp1_android$`Release Date` <- mdy(tb_tp1_android$`Release Date`)
+
+str(tb_tp1_apple)
+str(tb_tp1_android)
+
+# Note, after mdy is applied, "Release Date" Column is changed to POSIXct date format
+
+```
+
+We now have 2 tables with similar structure one for data for App's downloaded for Apple and the other downloaded for Android.  We will now add a column on each table, provider that will have the value "Apple" or "Android".
+
+```{r, eval = TRUE}
+tb_tp1_apple$provider <- c("Apple")
+tb_tp1_android$provider <- c("Android")
+
+tb_tp1_apple
+tb_tp1_android
+```
+
+We are now combining the 2 tables back into one.  To do so we will use the bind_rows function from dplyr.
+
+```{r, eval = TRUE}
+tb_tp1_result <- bind_rows(tb_tp1_apple, tb_tp1_android)
+
+```
+
+We have now a table in wide-format.  We will now transform this table into long format by "gathering" the years into one variable "year" and introducing a variable "downloads".  We will do so using the gather function from the tidyr package.
+
+```{r, eval = TRUE}
+tb_tp1_result <- gather(tb_tp1_result, "year", "downloads", 5:10)
+```
+
+
+#### Analysis - We will perform some analysis
+
+*** free app with most download's (per year)***
+What is the free app with most download for each year
+
+```{r, eval = TRUE}
+tb <- tb_tp1_result %>% filter(`Paid/Free` =="Free") %>% 
+                  group_by(`App Name`, year) %>% 
+                  summarise(sum(downloads))
+
+# still working on getting the numbers out... for some reasons I am having some difficulties
+
+```
+
+***  
+
+
+### College Graduation Rate as predictor of jobs in county (James Topor's example)
+
+#### Data Set: Explanation and load
+
+This data set represent the college graduation rate and the number of jobs per county for year 1970, 1980, 1990, and 2000.  In addition there are 2 additional variables for "Land Area" and "National Amenity".  We would be interested to see whether graduation rate from college is a predictor for number of jobs.
+The original data set can be found at: [http://www.theanalysisfactor.com/wide-and-long-data/].  
+
+We have created a .csv file with this data and posted in github for reproducibility.  We are first going to load the data and then proceed with changing the format from wide to long.
+
+```{r, eval = TRUE}
+file1_url <- getURL("https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/CUNY%20607_Project2_dataset2.csv")
+tb_tp2 <- read.csv(text = file1_url)
+
+# View file using "tbl_df" command from dplyr package
+tbl_df(tb_tp2)
+
+# view structure of data set tb_tp1
+str(tb_tp2)
+```
+
+
+#### Formatting of raw data into a long-format table
+
+We will first split this table into 2 to handle jobs and college separately then we ill join them back.  The first table will have County, LandArea, NetAmenity, and collegesyears.  The 2nd table will have County and Jobyears.  We will join the table table on County.  For each table, we will renames the year headers as year to facilitate transformation into long lormat.  We will store the final table.
+
+```{r, eval = TRUE}
+# split the table into 2
+tb_tp2_colleges <- select(tb_tp2, 1:7)
+tb_tp2_jobs <- select(tb_tp2, 1, 8:11)
+
+# Rename collumn for years as year
+names(tb_tp2_colleges) <- c("County", "LandArea", "NatAmenity", "1970", "1980", "1990", "2000")
+names(tb_tp2_jobs) <- c("County", "1970", "1980", "1990", "2000")
+
+# Transform each table from wide to long format using the gather function from tidyr and store resulting table so that we can join them
+tb_tp2_colleges_long <- gather(tb_tp2_colleges, years, college_graduation, 4:7)
+tb_tp2_jobs_long <- gather(tb_tp2_jobs, years, jobs, 2:5)
+
+# We are now going to combine the table again using inner_join from dplyr package joining on county, year
+tb_tp2_result <- inner_join(tb_tp2_colleges_long, tb_tp2_jobs_long, by = c("County", "years"))
+```
+
+
+#### Analysis - Proportion of resident completing college as predictor for number of jobs
+
+we will try to plot the 2 variables separating by countys
+
+```{r, eval = TRUE}
+ggplot(tb_tp2_result, aes(x=college_graduation, y=jobs, colour = County)) + geom_line() +geom_point()
+
+# Still working on this... as well.
+
+```
+
+***
+
+### Oil Consumption
+
+#### Data Set: Explanation and load  
+
+This dataset represent oil consumption for the beining of 2015 from January to June of 3 major brand of Oil per category.  In addition, the opening balance is indicated.
+
+The analysis that we will try to perform is as follows:
+1. Give the closing balance of component + brand
+2. Give the most consumed brand across the 2 category of oil
+
+For reproducible research, the data set will be loaded in a GitHub account as a .csv.  The file will be downloaded into tb_tp3.
+Prior to transforming the table we will view it.
+
+```{r, eval = TRUE}
+file3_url <- getURL("https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/CUNY%20607_project2_dataset3.csv")
+tb_tp3 <- read.csv(text = file3_url)
+
+# View file using "tbl_df" command from dplyr package
+tbl_df(tb_tp3)
+
+# view structure of data set tb_tp3
+str(tb_tp3)
+```
+
+First we will split the table for purchased and consumed value, repeating the common column of Month and Category.  Then, we will rename the columns and remove the first line of table.  Then we will fill in the "month" column using fill() function from tidyr package.
+
+```{r, eval = TRUE}
+# split the table into 2
+tb_tp3_purchased <- select(tb_tp3, 1:3, 5, 7)
+tb_tp3_consumed <- select(tb_tp3, 1:2, 4, 6, 8)
+
+# Rename collumn for years as year
+names(tb_tp3_purchased) <- c("Month", "Category", "Caltex", "Gulf", "Mobil")
+names(tb_tp3_consumed) <- c("Month", "Category", "Caltex", "Gulf", "Mobil")
+
+# remove first row 
+tb_tp3_purchased <- tb_tp3_purchased[-c(1), ]      # remove row# 1
+tb_tp3_consumed <- tb_tp3_consumed[-c(1), ]        # remove row# 1
+
+
+```
+
