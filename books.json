@@ -1,0 +1,26 @@
+{"data_books" :[
+    {
+    "title" : "Data Architecture: A Primer for the Data Scientist Big Data, Data Warehouse and Data Vault", 
+    "authors" : ["W. H. Inmon", "Daniel Linstedt"], 
+    "ISBN" : "978-0-12-802044-9", 
+    "publishing_year" : 2015 
+    },
+    {
+    "title" : "Data Science from scratch: First Principals with Python", 
+    "authors" : "Joel Grus", 
+    "ISBN" : "978-1-491-90142-7", 
+    "publishing_year" : 2015
+    }, 
+    {
+    "title" : "R in a Nutshell", 
+    "authors" : "Joseph Adler", 
+    "ISBN" : "978-1-449-31208-4", 
+    "publishing_year" : 2012
+    },
+    {
+    "title" : "R Graphics Cookbook", 
+    "authors" : "Winston Chang", 
+    "ISBN" : "978-1-449-31695-2", 
+    "publishing_year" : 2013
+    }]
+}

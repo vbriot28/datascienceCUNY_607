@@ -1,0 +1,37 @@
+<?xml version ="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE data_books [
+<!ELEMENT data_books (book)>
+<!ELEMENT book (title, author+, ISBN, publishing_year)>
+<!ELEMENT title (#PCDATA)>
+<!ELEMENT author (#PCDATA)>
+<!ELEMENT ISBN (#PCDATA)>
+<!ELEMENT publishing_year (#PCDATA)>
+<!ATTLIST book id CDATA #REQUIRED>
+]>
+<data_books>
+  <book id="1">
+    <title>Data Architecture: A Primer for the Data Scientist Big Data, Data Warehouse and Data Vault</title>
+    <author>W. H. Inmon</author>
+    <author>Daniel Linstedt</author>
+    <ISBN>978-0-12-802044-9</ISBN>
+    <publishing_year>2015</publishing_year>
+  </book>
+  <book id="2">
+    <title>Data Science from scratch: First Principals with Python</title>
+    <author>Joel Grus</author>
+    <ISBN>978-1-491-90142-7</ISBN>
+    <publishing_year>2015</publishing_year>
+  </book>
+  <book id="3">
+    <title>R in a Nutshell</title>
+    <author>Joseph Adler</author>
+    <ISBN>978-1-449-31208-4</ISBN>
+    <publishing_year>2012</publishing_year>
+  </book>
+  <book>
+    <title>R Graphics Cookbook</title>
+    <author>Winston Chang</author>
+    <ISBN>978-1-449-31695-2</ISBN>
+    <publishing_year>2013</publishing_year>
+  </book>
+</data_books>
