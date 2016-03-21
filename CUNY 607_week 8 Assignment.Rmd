@@ -1,0 +1,123 @@
+---
+title: "CUNY 607 - Working with HTML, XML, and JSON in R"
+author: "Valerie Briot"
+date: "March 20, 2016"
+output: 
+  html_document:
+    css: ./assignment.css
+    highlight: pygments
+    theme: cerulean
+---
+
+##Description:
+
+In this week assignment we will explore techniques to explore parsing html, xml, and json files and extract the relevant content of such files.
+We will first create a file of for each extension containing information about 3 books.  
+The elements captures are as follows: title, author(s), ISBN, publication year.  
+  
+_It is a requirement that at least one of the books has multiple authors._  
+
+For reproducibility of results, the 3 files: books.html, books.xml, and books.json have been published to github and accessible via rawgit (see below):  
+
+__Extract from FAQ from rawgit.com:__  
+
+_"RawGit acts as a caching proxy. It forwards requests to GitHub, caches the responses, and relays them to your browser with an appropriate Content-Type header based on the extension of the file that was requested. The caching layer ensures that minimal load is placed on GitHub, and you get quick and easy static file hosting right from a GitHub repo."_  
+
+##Packages:  
+  
+We wil using the following packages:  
+RCurl,  
+XML,  
+jsonlite,  
+
+```{r, eval=TRUE, echo=FALSE}
+library(RCurl)
+library(XML)
+library(jsonlite)
+```
+  
+##Load & parse each file  
+  
+First we will retrieve the URL for each of these files and then parse the content of each.    
+ 
+```{r, eval=TRUE, echo=TRUE}
+#HTML file books.html
+html_url <- getURL("https://cdn.rawgit.com/vbriot28/datascienceCUNY_607/master/books.html")
+books_parsed_html <- htmlParse(html_url)
+
+#XML file books.xml
+xml_url <- getURL("https://cdn.rawgit.com/vbriot28/datascienceCUNY_607/master/books.xml")
+books_parsed_xml <- xmlParse(xml_url)
+
+#JSON file books.json
+json_url <- getURL("https://cdn.rawgit.com/vbriot28/datascienceCUNY_607/master/books.json")
+books_parsed_json <- fromJSON(json_url)
+
+```
+  
+We will display the structure of the object after parsing.  
+```{r, eval=TRUE, echo=TRUE}
+#HTML parsed results
+str(books_parsed_html)
+
+#XML parsed results
+str(books_parsed_xml)
+
+#JSON parsed results
+str(books_parsed_json)
+
+```
+As we observe, the parsing for the html and xml documents resulted into HTML and XML internal documents respectively, however, the parsing of the json file resulted into a list of a single data frame.  The multiple authors for the first book, entered as an array in the json document, have been concatenated into a single entry.  We will simply extract the element of the list and store it in a data frame.  We will display the structure and the content.
+```{r, eval=TRUE, echo=TRUE}
+#Construct Data frame for JSON file
+df_books_json <- data.frame(books_parsed_json[1])
+str(df_books_json)
+head(df_books_json)
+
+```
+
+We will now extract the table in the parsed html document using a function from XML package: __readHTMLTable__.  Again this function will provide us with a list a a single data frame.  We will then extract the element of the list and store it in a data frame. We will display the structure and the con
+```{r, eval=TRUE, echo=FALSE}
+# Extract Table from parsed HTML
+df_books_html <- data.frame(readHTMLTable(books_parsed_html)[1])
+
+# Examine the structure and display first few rows
+str(df_books_html)
+head(df_books_html)
+
+```
+
+We are now going to extract the data from the parsed xml document.  Since we have 2 author tags for first book, we will extract each book node individually using xmlSApply on the Root node.  We will concatenate the 2 authors to follow the format of the previous extraction (i.e. "author1, author2").  Once we have a 1 row data frame for each book, each data frame with same columns, we will collapse them all into one using rbind function.
+
+```{r, eval=TRUE, echo=FALSE}
+books_xml_top <- xmlRoot(books_parsed_xml)
+# Extract first book node
+df1<-data.frame(t(xmlSApply(books_xml_top[[1]], xmlValue)))
+
+authors <- paste(df1$author, ", ", df1$author.1, sep = '') 
+title <- as.character(df1[1,1])
+ISBN <- as.character(df1[1,4])
+p_year <- as.character(df1[1,5])
+df1.1 <- data.frame(t(list(title, authors, ISBN, p_year)))
+
+# Extract 2nd book node
+df2<-data.frame(t(xmlSApply(books_xml_top[[2]], xmlValue)))
+
+# Extract 3rd book node
+df3<-data.frame(t(xmlSApply(books_xml_top[[3]], xmlValue)))
+
+# Extract 4th book node
+df4<-data.frame(t(xmlSApply(books_xml_top[[4]], xmlValue)))
+
+names(df1.1) <- names(df2)
+
+df_books_xml <- rbind(df1.1, df2, df3, df4)
+
+str(df_books_xml)
+head(df_books_xml)
+```
+
+##Conclusion:  
+
+R packages provide powerful tools for Web content parsing and extraction but some analysis of the content must be done in order to select the best method/tool available.
+
