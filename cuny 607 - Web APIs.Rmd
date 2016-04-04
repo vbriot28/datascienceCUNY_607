@@ -1,0 +1,393 @@
+---
+title: "CUNY 607 - Web APIs"
+author: "Valerie Briot"
+date: "April 1, 2016"
+output: html_document
+---
+
+In this assignment, we will contruct an interface in R to use the NY Times Book web API's to access the best sellers lists. The assumption is that we would have a wrapper function accepting as parameters; any combination of title, author, isbn and will return a data frame with the NY time best-seller list the author, book has been on a NY Times Best Sellers List.  The function will return a data frame with some basic information about the book and all best sellers appearances.  If the parameter is only the author, then all books for that author with each best sellers books will be returned.  The entry on the data frame will be sorted by best seller name and best sellers date in descending order.
+
+### NY Times API's terms and restrictions:
+In order to access the NY times API's a key must be required.  Also any one using the API's must adhere to the NY Times Term of Uses, guidlines and restrictions.  By using this function, you consent to the NY Times Term of Uses and Restrictions.  
+
+[NY Times Developer site](http://developer.nytimes.com/page)
+
+### NY Times Book API's:
+The NY Times has several available API's to access and retrieve specific information.  For the purpose of this assignment, we will look at the NY Times Book API's.  This allow developers to retrieve information from the Bestsellers lists or from the Book Reviews.  We have selected to retrieve information from the best sellers lists.  The NY Times has several best sellers lists (for example; "Combined Print and E-Book Fiction, E-Book Fiction, Hardcover Fiction, ...").  The Best Sellers service use a RESTful style.  Most requests are processed with a GET command.  An API consol is provided to try out the command (a key is required to use it).
+
+[NY Times API's Consol](http://developer.nytimes.com/io-docs)  
+
+### Wrapper Function:
+Our warpper function is expected to be use by a program that would have acquire the parameters passed to the wrapper; Author, Title, isbn.  The isbn can be 10 or 13 length long.  ISBN's are numerical, if 13 digits long, they must start by '978' or '979'.  Please not: Eventhough the isbn is numeric in nature, we will expect a string to be passed.  At least one of the 3 must be populated.  Program will accept NULL or " "" as no value.
+
+####1. Validation of input:
+* Author name is expected to be Alpha-numeric
+* Title name will not be validated
+* isbn will be validated as followed:  
+  + numerical only
+  + 10 or 13 digits
+  + if 13, must start with '978' or '979'  
+  + Check digit  
+
+####2. Build and send GET request;
+* HTTP endcoding standard for Author/title
+* Append API Key to request  
+
+####3. Process Response:
+* Handle errors 
+* No Result
+* Results found
+
+***
+
+```{r packages, eval = TRUE, echo = FALSE}
+# package use in this assignment
+library(RCurl)
+library(stringr)
+library(jsonlite)
+library(dplyr)
+```
+
+```{r API_key, eval = TRUE, echo = TRUE}
+
+# Book API key obtained from NY Times Developer site
+my_API_key <- "687e52456395577d652bdb3bd7ce9ec8:6:65677168"
+
+```
+
+#### Validation of the input parameters:
+The following chuncks of code are helper functions to validate the input parameters
+
+```{r helper_functions, eval = TRUE, echo = TRUE}
+
+check_input <- function(st){
+  # This function will validate that input is string and if NULL or empty will return indicator
+  # This function will return error code 0 = OK, not empty, -1 = Not empty not string, 1=empty string or NULL
+  
+  result_cinput <- 0
+  
+  if (is.null(st)) {
+    result_cinput <- 1
+  } else if (!is.character(st)){
+    result_cinput <- -1
+  } else if (st == "") {
+    result_cinput <- 1
+  }
+  return(result_cinput)
+}
+
+
+ check_num <- function(isbn_txt , l){
+  # This function will check the check num for input isbn, assume that input is numerical and l is 10 or 13
+  
+  # Convert isbn_txt to integer vector
+  v_c <- c(unlist(str_extract_all(isbn_txt, "\\d")))
+  v_i <- as.integer(v_c)
+  
+  # build check num vector based on l
+  if (l == 10) {
+    v_cn <- as.integer(c(10, 9, 8, 7, 6, 5, 4, 3, 2))
+    v_cn_mod <- 11
+    V_i_n <- v_i[1:9]
+    v_i_last <- as.integer(v_i[10:10])
+    v_base <- 11
+  } else {
+    v_cn <- as.integer(c(1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3))
+    v_cn_mod <- 10
+    V_i_n <- v_i[1:12]
+    v_i_last <- as.integer(v_i[13:13])
+    v_base <- 10
+  }
+  # Calculate check digit
+  cn <- v_base - (sum(V_i_n * v_cn)%%v_cn_mod)
+  
+  # Compare check digit to last digit
+  if (cn != v_i_last) {
+    cn_result <- FALSE
+  } else {
+    cn_result <- TRUE
+  }
+  
+  return(cn_result)
+}
+  
+
+isbn_is_valid <- function(isbn_txt){
+  # This function validate that input is in correct format to be an isbn
+  # This function will return a logical TRUE or FALSE
+  
+  isbn_result <- TRUE
+  
+  # 1. Validate length and numerical
+  if (!(str_length(isbn_txt) == 10 || str_length(isbn_txt) == 13)){
+    isbn_result <- FALSE
+  } else if (str_detect(isbn_txt, "\\D")){       # Not all numerical
+    isbn_result <- FALSE
+  } else if (!check_num (isbn_txt, str_length(isbn_txt))){
+    isbn_result <- FALSE
+  } else if (str_length(isbn_txt) == 13){
+    isbn_txt_3 <-str_sub(isbn_txt, start = 1, end = 3)
+      if (isbn_txt_3 != "978" && isbn_txt_3 != "979"){
+        isbn_result <- FALSE
+      }
+  }
+  return(isbn_result)
+}
+
+input_is_valid <- function(author, title, isbn_txt){
+  # This function will take the input from wrapper and validate 
+  # This function will return a list of [error code, error message] error code = 0 OK, -1=Error
+  input_ecode <- 0
+  input_emsg <- "OK"
+  
+  # check for at least one not null/blank entry
+  if ((check_input(author) == 1) && (check_input(title) == 1) && (check_input(isbn_txt) == 1)){
+    input_ecode <- -1
+    input_emsg <- "invalid input: At least one of the 3 parameters has to be specified"
+  }
+  # check author
+  if (check_input(author) == -1){
+    input_ecode <- -1
+    input_emsg <- "Invalid Author: Not character string or NULL"
+  } else if (str_detect(author, "[^\\w\\d\\s]")){
+    input_ecode <- -1
+    input_emsg <- "Invalid Author: Author name is not alphanumeric"
+  } 
+  # Check Title
+  if (check_input(title) == -1){
+    input_ecode <- -1
+    input_emsg <- "Invalid Title: Not character string or NULL"
+  }
+  # Check isbn
+  if (check_input(isbn_txt) == -1){
+    input_ecode <- -1
+    input_emsg <- "Invalid isbn: Not character string or NULL"
+  } else if (check_input(isbn_txt) != 1) { # If specified validate entry
+      if (!isbn_is_valid(isbn_txt)) {
+        input_ecode <- -1
+        input_emsg <- "Invalid isbn: isbn entered is not confirmed to isbn standard"
+      }
+  }
+  return (list(input_ecode, input_emsg))
+}
+
+```
+
+***
+
+#### Build GET Request
+The following chunck of code is to build the request and send it.
+
+```{r build_request, eval = TRUE, echo = TRUE}
+
+build_request <- function (b_url, author, title, isbn_txt, os, api_key){
+
+  my_r <- ""
+  my_r_author <- ""
+  my_r_isbn <- ""
+  my_r_title <- ""
+  
+  
+  my_r_api_key <- str_c("api-key=", URLencode(api_key, reserved = TRUE), sep = "")
+  my_r_os <- str_c("offset=", as.character(os), "&",  sep = "")
+  
+  if(check_input(author)==0){
+    my_r_author <- str_c("author=", URLencode(author), "&", sep = "")
+  }
+  if(check_input(isbn_txt)==0){
+    my_r_isbn <- str_c("isbn=", URLencode(isbn_txt), "&", sep = "")
+  }
+  if(check_input(title)==0){
+    my_r_title <- str_c("title=", URLencode(title), "&", sep = "")
+  }
+  
+  my_r <- str_c(b_url, my_r_author, my_r_isbn, my_r_title, my_r_os, my_r_api_key, seq="")
+}
+```
+
+
+We will create a function to process results
+```{r Process_results, eval = TRUE, echo = TRUE}
+
+process_results <-function(n, df){
+  #This function will take the results from the request and process it
+  
+  df_results <- data.frame()
+  
+  # subset title, description, author
+  df_main <- df[, c(1,2, 4)]
+  
+  for (i in 1:n){
+    # For each result node, extract isbns node and ranks_history node
+    
+    df_i <- as.data.frame(df$isbns[i])
+    
+    if(sum(dim(df_i)) != 0) {
+      df_si <- as.data.frame(df_i[,2])
+      colnames(df_si)[1] <- "isbn13"
+    } else {
+      df_si <- data.frame(isbn13 = 0)
+    }
+    df_r1 <- cbind(as.data.frame(df_main[i,]),df_si, deparse.level = 1)
+   
+    if(sum(dim(df_b)) != 0){
+     df_b <- as.data.frame(df$ranks_history[i])
+     df_b <- df_b[, c(2,3,4,5,7,8)]
+     colnames(df_b)[1] <- "isbn13"
+    } else {
+     df_b <- data.frame(sbn13 = character(0), rank = integer(0), list_name = character(0), display_name = character(0), bestsellers_date = character(0), weeks_on_list = integer(0))
+    }
+    df_r <- left_join(df_r1,df_b, by = "isbn13", copy = FALSE)  
+    df_results <- rbind(df_results,df_r)
+    
+  } # End of For loop
+  
+  return(df_results)
+}
+```
+
+***
+
+#### Wrapper function
+We will now put everything together, the processing of the response will be done in the wrapper.
+
+```{r wrapper, eval = TRUE, echo = TRUE}
+get_best_sellers <- function(author, isbn_txt, title, api_key){
+  # This function is a wrapper to process request to retrieve  best sellers history for a Author/Book
+  
+   wrapper_result_df <- data.frame(title = character(0), description = character(0), author = character(0), isbn13 = character(0), rank = integer(0),      list_name = character(0), display_name = character(0), bestsellers_date = character(0), weeks_on_list = integer(0))
+   
+   wrapper_results <- 0
+   process_count <- 0
+   
+   request_offset <- 0
+   
+   # Base quesry for Best Sellers history
+   base_url <- "http://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?"
+
+   # Validate input
+   input_list <- input_is_valid(author, isbn_txt, title)
+   
+   if(input_list[1] == -1){
+     stop(input_list[2])
+   }
+   
+   more_to_get <- TRUE
+   while(more_to_get){
+     # Build request
+     my_request <- build_request(base_url, author, title, isbn_txt, request_offset, api_key)
+   
+     # get response 
+     feed <- as.data.frame(fromJSON(my_request, simplifyDataFrame = TRUE, flatten = FALSE))
+   
+   
+     if(feed$status != "OK"){
+       stop("Host returned error code")
+     }
+     # Store total number of results found
+     wrapper_results <- feed$num_results
+ 
+     # Process results
+     if(wrapper_results != 0){
+     
+       # Calculate number of result to be processed
+       results_to_be_processed <- count(feed$results)
+     
+       results_df <- as.data.frame(feed$results)
+     
+       r_df <- process_results(results_to_be_processed, results_df)
+       rbind(wrapper_result_df, r_df)
+     }
+   
+     process_count <- process_count + results_to_be_processed
+     
+     if(wrapper_results > process_count){
+       request_offset <- request_offset + 20
+     } else {
+       more_to_get <- FALSE
+     }
+   }  # end of While loop
+} # end of function
+```
+
+***
+
+#### Testing suites:
+The following are to test individual functions.  As previously mentioned, we would expect the wrapper to be called from an application that will
+accept input from user or other application.  We would expect that this input is validated.  We however provided some validation for input.  In a real scenario, we would not expect the wrapper to have this kind of functionality.
+
+```{r testing_suite, eval = TRUE, echo = TRUE}
+# Test function check_input:
+# All possibilities were tested manually; NULL, "", 1, "This is a test"
+
+#st<-""
+#st<-1
+#st<-"This is a test"
+st <- NULL
+test_r1 <- check_input(st)
+test_r1
+
+#########################
+
+# Test function: check_num
+#tst <- "0446556793"
+#lg <-10
+tst <- "9780446556798"
+lg <- 13
+
+#tst <- "9780446556790"
+#lg <- 13
+
+test_r2 <- check_num(tst , lg)
+test_r2 
+
+########################
+
+# Test function: isbn_is_valid
+
+tst <- "9780446556798"
+
+test_r3 <- isbn_is_valid(tst)
+test_r3
+
+#######################
+
+# Test function: input_is_valid 
+
+a<- "Michael Connelly"
+t<- ""
+i<- "9780446556798"
+
+test_r4 <- input_is_valid(a, t, i)
+test_r4
+
+######################
+
+# Test function: build_request <- function (b_url, author, title, isbn_txt, os, api_key){
+
+a<- "Michael Connelly"
+t<- ""
+i<- "9780446556798"
+b <- "http://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?"
+o <- 0
+
+my_API_key <- "687e52456395577d652bdb3bd7ce9ec8:6:65677168"
+
+test_r5 <- build_request (b, a, t, i, o, my_API_key)
+test_r5
+
+######################
+
+# Test function: get_best_sellers 
+
+a<- "Michael Connelly"
+t<- ""
+i<- ""
+
+
+my_API_key <- "687e52456395577d652bdb3bd7ce9ec8:6:65677168"
+
+df <- get_best_sellers (a, i, t, my_API_key)
+
+```
+
