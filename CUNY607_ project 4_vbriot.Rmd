@@ -1,0 +1,182 @@
+---
+title: "Project4"
+author: "Valerie Briot"
+date: "April 26, 2016"
+output: html_document
+---
+
+This document pertains to load data from MySql Database into MongoDB.  When possible this will be done using R code.  The following packages will be used:  
+RMySQL
+rmongodb
+rjson
+
+The mongod executable should be running in the background.  
+
+```{r, eval = TRUE, echo = FALSE}
+library(RMySQL)
+library(rmongodb)
+library(rjson)
+```
+
+For the purpose of this exercise, we will use the flights data base already loaded into MySQL on localHost.  We will assume that similar environment is available.  
+
+First, we will connect to MySQL database and retrieve the data using the RMySQL package.  The connection parameters should be changed if the environment available is different.  
+
+```{r}
+#Connect to MySQL database
+
+flights_db_mysql <- dbConnect(MySQL(), user="root", password="admin",
+                                       dbname="flights", host="localhost")
+```
+
+Then we will run queries to retrieve the data and store it.  For the flights table, the data could not be loaded using the method from rmongodb and the mongoimport function will be used.  To this effect a .csv file will be created.  The path where this file is stored should be udpated to reproduce the results.  
+
+```{r}
+# .csv path for flights table
+
+path_csv <- "C:/Users/vbrio/Documents/Cuny/DATA_607/project4/flights.csv"
+
+airlines <- dbGetQuery(flights_db_mysql, "SELECT * FROM flights.airlines;")
+airports <- dbGetQuery(flights_db_mysql, "SELECT * FROM flights.airports;")
+weather <- dbGetQuery(flights_db_mysql, "SELECT * FROM flights.weather;")
+planes <- dbGetQuery(flights_db_mysql, "SELECT * FROM flights.planes;")
+flights <- dbGetQuery(flights_db_mysql, "SELECT * FROM flights.flights;")
+
+write.csv(flights, file = path_csv)
+
+```
+
+Checking some elements of the data.  Also, the .csv file is created with a extra column containing the record number. This column should be removed from the .csv file.
+
+```{r}
+class(airports)
+class(airlines)
+class(weather)
+class(planes)
+class(flights)
+
+airlines[1:5, ]      
+airports[1:5, ]
+weather[1:5, ]
+planes[1:5, ]
+flights[1:5, ]
+
+nrow(airlines)
+nrow(airports)
+nrow(weather)
+nrow(planes)
+nrow(flights)
+```
+
+We will now connect to Mongodb database and we will load the data from the airlines, airports, weather, and planes tables.  For the flight table the data will be imported from mongo shell by the mongoimport command.  We were encoutering memory problem with the method outline below.  
+
+```{r}
+######################################################
+#Connect to Mongodb database
+# connect to mongodb running in background on localhost
+
+# Please note, flights_m, was created using mongo shell 
+#######################################################
+mongo <- mongo.create()
+mongo.is.connected(mongo)
+
+db <- "flights_m"
+
+mairlines <- "flights_m.airlines"
+mairports <- "flights_m.airports"
+mweather <- "flights_m.weather"
+mplanes <- "flights_m.planes"
+mflights <-"flights_m.flights"
+
+mongo.get.database.collections(mongo, db)
+```
+
+The data must be converted to bjson format prior to being inserted into Mongodb database.  
+
+```{r}
+# convert airports l to bson format
+airlines_lbson <- lapply(split(airlines, 1:nrow(airlines)), function(x) mongo.bson.from.JSON(toJSON(x)))
+airports_lbson <- lapply(split(airports, 1:nrow(airports)), function(x) mongo.bson.from.JSON(toJSON(x)))
+weather_lbson <- lapply(split(weather, 1:nrow(weather)), function(x) mongo.bson.from.JSON(toJSON(x)))
+planes_lbson <- lapply(split(planes, 1:nrow(planes)), function(x) mongo.bson.from.JSON(toJSON(x)))
+#flights_lbson <- lapply(split(flights, 1:nrow(flights)), function(x) mongo.bson.from.JSON(toJSON(x)))
+# flights table is not being loaded.  Will write to .csv and load with dbmongo import.
+```
+
+We now inser the data into mongodb, the the collection already exists, we will remove it as to not duplicate the data.  
+
+```{r}
+if(mongo.count(mongo,mairlines) != 0){
+  mongo.remove(mongo, mairlines, criteria = mongo.bson.empty()) 
+}
+mongo.insert.batch(mongo, mairlines, airlines_lbson)
+
+if(mongo.count(mongo,mairports) != 0){
+  mongo.remove(mongo, mairports, criteria = mongo.bson.empty()) 
+}
+mongo.insert.batch(mongo, mairports, airports_lbson)
+
+if(mongo.count(mongo,mweather) != 0){
+  mongo.remove(mongo, mweather, criteria = mongo.bson.empty()) 
+}
+mongo.insert.batch(mongo, mweather, weather_lbson)
+
+if(mongo.count(mongo,mplanes) != 0){
+  mongo.remove(mongo, mplanes, criteria = mongo.bson.empty()) 
+}
+mongo.insert.batch(mongo, mplanes, planes_lbson)
+```
+
+For the flights table, the data will be inserted directly using the mongoimport command.  
+[https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/import_command.PNG](mongodb command)  
+
+The results we objtained:  
+[https://raw.githubusercontent.com/vbriot28/datascienceCUNY_607/master/import_commnad_result.PNG](mongodb results)  
+
+We will now compare the count between the set of records.  
+
+```{r}
+mongo.count(mongo, mairlines)
+mongo.count(mongo, mairports)
+mongo.count(mongo, mweather)
+mongo.count(mongo, mplanes)
+mongo.count(mongo, mflights)
+
+mysql_count <- c(nrow(airlines), nrow(airports), nrow(weather), nrow(planes), nrow(flights))
+mongodb_count <- c(mongo.count(mongo, mairlines), mongo.count(mongo, mairports), mongo.count(mongo, mweather), mongo.count(mongo, mplanes), 
+                   mongo.count(mongo, mflights))
+
+mysql_count == mongodb_count
+```
+
+We will now run a query on one of the table using both SQL and Mongodb.  We will present the data into data frame.  The query will select the record from the "weather" table for which origin = "JFK".  
+
+```{r}
+
+mongo_l <- mongo.find.all(mongo, mweather, '{"origin" : "JFK"}')
+
+class(mongo_l)
+
+mongo_df<-as.data.frame(do.call(rbind.data.frame, mongo_l))
+class(mongo_df)
+
+sql_df <- dbGetQuery(flights_db_mysql, "SELECT * FROM flights.weather where origin = 'JFK';")
+
+sql_df
+
+dim(mongo_df)
+dim(sql_df)
+
+mongo_df[,2:15] == sql_df
+
+mongo_df$pressure
+
+sql_df$pressure
+```
+
+The 'NA' results we obtain in the dataframe to dataframe comparison are due to NA value in the pressure column.  These values are 'NA' in both data sets, the one extracting from sql and the one extracting from mongodb.  
+
+In conclusion, with the rmongodb package, db opertion can be executed from R directly.  However, the advantage of using Mongodb as a data base is to have a dynamic schema data base that can store large amount of data.  We would anticipate that any work in R would be done in subset of original data set.  The most efficient way of loading the data would be using the command provided by the database package.  We would expect that a subset of the data would be loaded in R for transformation and analysis.  
+
+An interest video on rmongodb can be found here...  
+[https://www.youtube.com/watch?v=GWZdFFYrR4I](Webinar on the rmongodb R package)
